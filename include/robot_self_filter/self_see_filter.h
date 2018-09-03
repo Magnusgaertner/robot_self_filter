@@ -33,6 +33,7 @@
 #include <filters/filter_base.h>
 #include <robot_self_filter/self_mask.h>
 #include <ros/console.h>
+#include <pcl-1.7/pcl/point_cloud.h>
 
 namespace filters
 {

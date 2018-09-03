@@ -39,6 +39,8 @@
 #include "robot_self_filter/self_see_filter.h"
 #include <tf/message_filter.h>
 #include <message_filters/subscriber.h>
+#include <pcl-1.7/pcl/impl/point_types.hpp>
+#include <pcl-1.7/pcl/point_cloud.h>
 
 namespace robot_self_filter
 {
@@ -72,6 +74,9 @@ public:
     }
     pointCloudPublisher_ = root_handle_.advertise<sensor_msgs::PointCloud2>("cloud_out", 1,
                                                                             connect_cb, connect_cb);
+    freespacePointCloudPublisher_ = root_handle_.advertise<sensor_msgs::PointCloud2>("freespace_cloud_out", 1,
+                                                                            connect_cb, connect_cb);
+
   }
     
   ~SelfFilter(void)
@@ -90,7 +95,7 @@ private:
 
   void connectionCallback(const ros::SingleSubscriberPublisher& pub)
   {
-    if (pointCloudPublisher_.getNumSubscribers() > 0) {
+    if (pointCloudPublisher_.getNumSubscribers() > 0 || freespacePointCloudPublisher_.getNumSubscribers() > 0) {
       if (!subscribing_) {
         subscribe();
         subscribing_ = true;
@@ -141,17 +146,19 @@ private:
     ros::WallTime tm = ros::WallTime::now();
 
     
-    sensor_msgs::PointCloud2 out2;
+    sensor_msgs::PointCloud2 out2, out2diff;
     int input_size = 0;
     int output_size = 0;
     if (use_rgb_)
     {
       typename pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZRGB>);
       pcl::fromROSMsg(*cloud2, *cloud);
-      pcl::PointCloud<pcl::PointXYZRGB> out;
-      self_filter_rgb_->updateWithSensorFrame(*cloud, out, sensor_frame_);
+      pcl::PointCloud<pcl::PointXYZRGB> out, outdiff;
+      self_filter_rgb_->updateWithSensorFrame(*cloud, out,outdiff, sensor_frame_);
       pcl::toROSMsg(out, out2);
+      pcl::toROSMsg(outdiff, out2diff);
       out2.header.stamp = cloud2->header.stamp;
+      out2diff.header.stamp = out2.header.stamp;
       input_size = cloud->points.size();
       output_size = out.points.size();
     }
@@ -159,16 +166,19 @@ private:
     {
       typename pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
       pcl::fromROSMsg(*cloud2, *cloud);
-      pcl::PointCloud<pcl::PointXYZ> out;
-      self_filter_->updateWithSensorFrame(*cloud, out, sensor_frame_);
+      pcl::PointCloud<pcl::PointXYZ> out, outdiff;
+      self_filter_->updateWithSensorFrame(*cloud, out,outdiff,  sensor_frame_);
       pcl::toROSMsg(out, out2);
+      pcl::toROSMsg(outdiff, out2diff);
       out2.header.stamp = cloud2->header.stamp;
+      out2diff.header.stamp = out2.header.stamp;
       input_size = cloud->points.size();
       output_size = out.points.size();
     }
       
     double sec = (ros::WallTime::now() - tm).toSec();
     pointCloudPublisher_.publish(out2);
+    freespacePointCloudPublisher_.publish(out2diff);
     ROS_DEBUG("Self filter: reduced %d points to %d points in %f seconds", input_size, output_size, sec);
 
   }
@@ -187,7 +197,7 @@ private:
   bool subscribing_;
   std::vector<std::string> frames_;
   
-  ros::Publisher                                        pointCloudPublisher_;
+  ros::Publisher                                        pointCloudPublisher_, freespacePointCloudPublisher_;
   ros::Subscriber                                       no_filter_sub_;
   int max_queue_size_;
 };
